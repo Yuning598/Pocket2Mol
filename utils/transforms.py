@@ -87,6 +87,7 @@ class FeaturizeProteinAtom(object):
 
     def __call__(self, data:ProteinLigandData):
         element = data.protein_element.view(-1, 1) == self.atomic_numbers.view(1, -1)   # (N_atoms, N_elements)
+        data.protein_atom_to_aa_type = data.protein_atom_to_aa_type.long()
         amino_acid = F.one_hot(data.protein_atom_to_aa_type, num_classes=self.max_num_aa)
         is_backbone = data.protein_is_backbone.view(-1, 1).long()
         is_mol_atom = torch.zeros_like(is_backbone, dtype=torch.long)
@@ -152,7 +153,7 @@ class LigandCountNeighbors(object):
     @staticmethod
     def count_neighbors(edge_index, symmetry, valence=None, num_nodes=None):
         assert symmetry == True, 'Only support symmetrical edges.'
-
+        edge_index = edge_index.long()
         if num_nodes is None:
             num_nodes = maybe_num_nodes(edge_index)
 
@@ -213,6 +214,9 @@ class LigandRandomMask(object):
         masked_idx = idx[:num_masked]
         context_idx = idx[num_masked:]
 
+        context_idx = context_idx.long()
+        data.ligand_bond_index = data.ligand_bond_index.long()
+        
         data.context_idx = context_idx  # for change bond index
         data.masked_idx = masked_idx
 
@@ -339,13 +343,21 @@ class LigandBFSMask(object):
         # data.ligand_masked_feature = data.ligand_atom_feature[masked_idx]   # For Prediction. these features are chem properties
         data.ligand_masked_pos = data.ligand_pos[masked_idx]
         
+        # 初始化 ligand_context_bond_index 和 ligand_context_bond_type
+        data.ligand_context_bond_index = torch.empty([2, 0], dtype=torch.long)
+        data.ligand_context_bond_type = torch.empty([0], dtype=torch.long)
+
         # context ligand atom elment/full features/pos. Note: num_neigh and num_valence features should be changed
         data.ligand_context_element = data.ligand_element[context_idx]
         data.ligand_context_feature_full = data.ligand_atom_feature_full[context_idx]   # For Input
         data.ligand_context_pos = data.ligand_pos[context_idx]
 
+        context_idx = context_idx.long()
+        data.ligand_bond_index = data.ligand_bond_index.long()
+
         # new bond with ligand context atoms
         if data.ligand_bond_index.size(1) != 0:
+            data.ligand_context_bond_index = data.ligand_context_bond_index.long()
             data.ligand_context_bond_index, data.ligand_context_bond_type = subgraph(
                 context_idx,
                 data.ligand_bond_index,
@@ -355,6 +367,7 @@ class LigandBFSMask(object):
         else:
             data.ligand_context_bond_index = torch.empty([2, 0], dtype=torch.long)
             data.ligand_context_bond_type = torch.empty([0], dtype=torch.long)
+        
         # re-calculate atom features that relate to bond
         data.ligand_context_num_neighbors = LigandCountNeighbors.count_neighbors(
             data.ligand_context_bond_index,
@@ -659,6 +672,9 @@ class AtomComposer(object):
 
     @staticmethod
     def get_knn_graph(data:ProteinLigandData, knn, len_ligand_ctx, len_compose, num_workers=1, ):
+        
+        data.ligand_context_bond_type = data.ligand_context_bond_type.long()
+
         data.compose_knn_edge_index = knn_graph(data.compose_pos, knn, flow='target_to_source', num_workers=num_workers)
 
         id_compose_edge = data.compose_knn_edge_index[0, :len_ligand_ctx*knn] * len_compose + data.compose_knn_edge_index[1, :len_ligand_ctx*knn]

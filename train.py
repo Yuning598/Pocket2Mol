@@ -20,7 +20,7 @@ from utils.train import *
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='./configs/train.yml')
-    parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--logdir', type=str, default='./logs')
     args = parser.parse_args()
 
@@ -77,7 +77,8 @@ if __name__ == '__main__':
         train_set, 
         batch_size = config.train.batch_size, 
         shuffle = True,
-        num_workers = config.train.num_workers,
+        # num_workers = config.train.num_workers,
+        num_workers = 0,
         pin_memory = config.train.pin_memory,
         follow_batch = follow_batch,
         exclude_keys = collate_exclude_keys,
